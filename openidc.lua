@@ -1388,7 +1388,7 @@ local function openidc_access_token(opts, session, try_to_renew)
     return nil, err
   end
   -- passport通行证数据在json.data中，错误码在json.errcode
-  if json.errcode ~= 200 then
+  if json.errcode ~= 0 then
     log(ERROR, json.description)
     return nil, json.description
   end
