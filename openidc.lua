@@ -613,6 +613,9 @@ function openidc.call_userinfo_endpoint(opts, access_token)
   local res, err = httpc:request_uri(opts.discovery.userinfo_endpoint,
                                      decorate_request(opts.http_request_decorator, {
     headers = headers,
+    query = ngx.encode_args({
+      access_token = access_token,
+    }),  -- passport通行证 access_token必须放到body中
     ssl_verify = (opts.ssl_verify ~= "no"),
     keepalive = (opts.keepalive ~= "no")
   }))
@@ -1118,6 +1121,7 @@ local function openidc_authorization_response(opts, session)
 
   -- assemble the parameters to the token endpoint
   local body = {
+    client_id = opts.client_id,
     grant_type = "authorization_code",
     code = args.code,
     redirect_uri = openidc_get_redirect_uri(opts, session),
@@ -1134,11 +1138,18 @@ local function openidc_authorization_response(opts, session)
   if err then
     return nil, err, session.data.original_url, session
   end
-
-  local id_token, err = openidc_load_and_validate_jwt_id_token(opts, json.id_token, session);
-  if err then
-    return nil, err, session.data.original_url, session
+  -- passport通行证数据在json.data中，错误码在json.errcode
+  log(ERROR, cjson_s.encode(json))
+  if json.errcode ~= 0 then
+    log(ERROR, json.description)
+    return nil, json.description
   end
+  json = json.data
+
+  --local id_token, err = openidc_load_and_validate_jwt_id_token(opts, json.id_token, session);
+  --if err then
+  --  return nil, err, session.data.original_url, session
+  --end
 
   -- mark this sessions as authenticated
   session.data.authenticated = true
@@ -1159,18 +1170,18 @@ local function openidc_authorization_response(opts, session)
     if err then
       log(ERROR, "error calling userinfo endpoint: " .. err)
     elseif user then
-      if id_token.sub ~= user.sub then
-        err = "\"sub\" claim in id_token (\"" .. (id_token.sub or "null") .. "\") is not equal to the \"sub\" claim returned from the userinfo endpoint (\"" .. (user.sub or "null") .. "\")"
-        log(ERROR, err)
-      else
+      --if id_token.sub ~= user.sub then
+      --  err = "\"sub\" claim in id_token (\"" .. (id_token.sub or "null") .. "\") is not equal to the \"sub\" claim returned from the userinfo endpoint (\"" .. (user.sub or "null") .. "\")"
+      --  log(ERROR, err)
+      --else
         session.data.user = user
-      end
+      --end
     end
   end
 
-  if store_in_session(opts, 'enc_id_token') then
-    session.data.enc_id_token = json.id_token
-  end
+  --if store_in_session(opts, 'enc_id_token') then
+  --  session.data.enc_id_token = json.id_token
+  --end
 
   if store_in_session(opts, 'access_token') then
     session.data.access_token = json.access_token
@@ -1181,13 +1192,13 @@ local function openidc_authorization_response(opts, session)
     end
   end
 
-  if opts.lifecycle and opts.lifecycle.on_authenticated then
-    err = opts.lifecycle.on_authenticated(session, id_token, json)
-    if err then
-      log(WARN, "failed in `on_authenticated` handler: " .. err)
-      return nil, err, session.data.original_url, session
-    end
-  end
+  --if opts.lifecycle and opts.lifecycle.on_authenticated then
+  --  err = opts.lifecycle.on_authenticated(session, id_token, json)
+  --  if err then
+  --    log(WARN, "failed in `on_authenticated` handler: " .. err)
+  --    return nil, err, session.data.original_url, session
+  --  end
+  --end
 
   -- save the session with the obtained id_token
   session:save()
@@ -1376,6 +1387,12 @@ local function openidc_access_token(opts, session, try_to_renew)
   if err then
     return nil, err
   end
+  -- passport通行证数据在json.data中，错误码在json.errcode
+  if json.errcode ~= 200 then
+    log(ERROR, json.description)
+    return nil, json.description
+  end
+  json = json.data
   local id_token
   if json.id_token then
     id_token, err = openidc_load_and_validate_jwt_id_token(opts, json.id_token, session)
