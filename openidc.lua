@@ -1139,7 +1139,7 @@ local function openidc_authorization_response(opts, session)
     return nil, err, session.data.original_url, session
   end
   -- passport通行证数据在json.data中，错误码在json.errcode
-  log(ERROR, cjson_s.encode(json))
+  --log(ERROR, cjson_s.encode(json))
   if json.errcode ~= 0 then
     log(ERROR, json.description)
     return nil, json.description
